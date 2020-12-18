@@ -15,7 +15,9 @@ class PerformanceCalculation(object):
         self.sheet_formula = None
         self.sheet_statistical_table = None
         self.name_mapping_dic = {}
+        self.overall_bonus_dic = {}
         self.total_bonus_dic = {}
+
         self.get_name_mapping_dic()
 
     def get_name_mapping_dic(self):
@@ -30,7 +32,7 @@ class PerformanceCalculation(object):
     def calc_all_salary(self):
         performance_files = self.get_all_perf_file_name()
         self.get_statistical_table_dic()
-        print(self.total_bonus_dic)
+        # print(self.overall_bonus_dic)
         for full_filepath in performance_files:
             filename_full = os.path.basename(full_filepath)
             filename_with_ext = os.path.splitext(filename_full)
@@ -38,9 +40,15 @@ class PerformanceCalculation(object):
             file_ext = filename_with_ext[1]
 
             if filename.find(const_define.STATISTICAL_TABLE_KEYWORD) < 0 and file_ext == '.xlsx':
-                print(self.get_name_from_filename(filename))
-                print(filename)
+                name = self.get_name_from_filename(filename).lower()
+                print(name)
                 personal_bonus = self.calc_salary(full_filepath)
+                print(personal_bonus)
+                print(self.overall_bonus_dic[name])
+                total_bonus = self.overall_bonus_dic[name] + int(personal_bonus)
+
+                self.total_bonus_dic[name] = total_bonus
+        print(self.total_bonus_dic)
 
     def get_statistical_table_dic(self):
         statistical_table_filename = self.get_statistical_table_filename(self.get_all_perf_file_name())
@@ -52,7 +60,6 @@ class PerformanceCalculation(object):
             for cell in row:
                 if cell.value == '各別獎金':
                     self.get_overall_value(cell)
-        print("-------------------------")
 
     def get_overall_value(self, cell):
         # for name in self.name_mapping_dic.keys():
@@ -62,7 +69,7 @@ class PerformanceCalculation(object):
             if name:
                 for key, value in self.name_mapping_dic.items():
                     if key == name.lower():
-                        self.total_bonus_dic[key] = self.sheet_statistical_table.cell(row=cell.row+1, column=cell.column+i).value
+                        self.overall_bonus_dic[key] = self.sheet_statistical_table.cell(row=cell.row+1, column=cell.column+i).value
             else:
                 return
 
@@ -77,7 +84,7 @@ class PerformanceCalculation(object):
             for cell in row:
                 if cell.value == '個人Total' and cell.column == column_index_from_string('I'):
                     perf_value = self.calculate_value_cell(self.sheet_formula.cell(row=cell.row, column=cell.column+1))
-                    print(perf_value)
+                    return perf_value
         print("-------------------------")
 
     def calculate_value_cell(self, cell):
