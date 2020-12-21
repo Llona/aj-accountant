@@ -1,11 +1,15 @@
 # -*- coding: UTF-8 -*-
 import openpyxl
-from openpyxl.utils import get_column_letter, column_index_from_string
+from openpyxl.utils import column_index_from_string
 from openpyxl.utils.cell import coordinate_from_string
 import os
 import const_define
 import re
 from decimal import Decimal, ROUND_HALF_UP
+from collections import OrderedDict
+import shutil
+import io
+# import time
 
 
 class PerformanceCalculation(object):
@@ -14,7 +18,8 @@ class PerformanceCalculation(object):
         self.sheet = None
         self.sheet_formula = None
         self.sheet_statistical_table = None
-        self.name_mapping_dic = {}
+        self.name_mapping_dic = OrderedDict()
+        self.personal_bonus_dic = {}
         self.overall_bonus_dic = {}
         self.total_bonus_dic = {}
 
@@ -43,23 +48,37 @@ class PerformanceCalculation(object):
                 name = self.get_name_from_filename(filename).lower()
                 print(name)
                 personal_bonus = self.calc_salary(full_filepath)
-                print(personal_bonus)
-                print(self.overall_bonus_dic[name])
+                self.personal_bonus_dic[name] = personal_bonus
+                print('個人獎金: {}'.format(personal_bonus))
+                print('統籌獎金: {}'.format(self.overall_bonus_dic[name]))
+                print('------------------------------------------------')
                 total_bonus = self.overall_bonus_dic[name] + int(personal_bonus)
 
                 self.total_bonus_dic[name] = total_bonus
-        print(self.total_bonus_dic)
+
+        for name in self.name_mapping_dic.keys():
+            if name not in self.total_bonus_dic.keys():
+                continue
+            print(name)
+            print('業積獎金: {}'.format(self.total_bonus_dic[name]))
+            print('======================')
+
+        self.move_file_to_backup_folder(performance_files)
 
     def get_statistical_table_dic(self):
         statistical_table_filename = self.get_statistical_table_filename(self.get_all_perf_file_name())
+
         print(statistical_table_filename)
-        workbook = openpyxl.load_workbook(statistical_table_filename, read_only=True, data_only=True)
+        with open(statistical_table_filename, "rb") as f:
+            in_mem_file = io.BytesIO(f.read())
+        workbook = openpyxl.load_workbook(in_mem_file, read_only=True, data_only=True)
         worksheets = tuple(workbook.sheetnames)
         self.sheet_statistical_table = workbook[worksheets[0]]
         for row in self.sheet_statistical_table.iter_rows():
             for cell in row:
                 if cell.value == '各別獎金':
                     self.get_overall_value(cell)
+                    return
 
     def get_overall_value(self, cell):
         # for name in self.name_mapping_dic.keys():
@@ -69,23 +88,35 @@ class PerformanceCalculation(object):
             if name:
                 for key, value in self.name_mapping_dic.items():
                     if key == name.lower():
-                        self.overall_bonus_dic[key] = self.sheet_statistical_table.cell(row=cell.row+1, column=cell.column+i).value
+                        value = self.sheet_statistical_table.cell(row=cell.row+1, column=cell.column+i).value
+                        value = self.round_v2(value)
+                        self.overall_bonus_dic[key] = value
             else:
                 return
 
     def calc_salary(self, full_filename):
-        workbook = openpyxl.load_workbook(full_filename, read_only=True, data_only=True)
+        with open(full_filename, "rb") as f:
+            in_mem_file = io.BytesIO(f.read())
+        workbook = openpyxl.load_workbook(in_mem_file, read_only=True, data_only=True)
         worksheets = tuple(workbook.sheetnames)
         self.sheet = workbook[worksheets[0]]
-        workbook_temp = openpyxl.load_workbook(full_filename, read_only=True, data_only=False)
+
+        with open(full_filename, "rb") as f:
+            in_mem_file2 = io.BytesIO(f.read())
+        workbook_temp = openpyxl.load_workbook(in_mem_file2, read_only=True, data_only=False)
         worksheets_temp = tuple(workbook.sheetnames)
         self.sheet_formula = workbook_temp[worksheets_temp[0]]
-        for row in self.sheet_formula.iter_rows():
+
+        person_col = column_index_from_string('I')
+
+        # start = time.time()
+        for row in self.sheet_formula.iter_rows(min_col=person_col, max_col=person_col, min_row=300):
             for cell in row:
-                if cell.value == '個人Total' and cell.column == column_index_from_string('I'):
+                if cell.value == '個人Total' and cell.column == person_col:
                     perf_value = self.calculate_value_cell(self.sheet_formula.cell(row=cell.row, column=cell.column+1))
+                    # end = time.time()
+                    # print("執行時間：%f 秒" % (end - start))
                     return perf_value
-        print("-------------------------")
 
     def calculate_value_cell(self, cell):
         formula = cell.value
@@ -111,14 +142,14 @@ class PerformanceCalculation(object):
             row_count = sum_min_row
             # print(sum_min_col, sum_min_row, sum_max_col, sum_max_row)
             # print(row_count)
-            while row_count < sum_max_row:
+            while row_count <= sum_max_row:
                 value = self.sheet.cell(row=row_count, column=sum_min_col).value
 
                 if value:
                     # print(value)
                     # print(type(value))
                     try:
-                        float(value)
+                        # int(value)
                         # print(value)
                         value = self.round_v2(value)
                         # print(value)
@@ -160,7 +191,8 @@ class PerformanceCalculation(object):
                 return True
             else:
                 return False
-        except:
+        except Exception as e:
+            str(e)
             return False
 
     @staticmethod
@@ -186,6 +218,19 @@ class PerformanceCalculation(object):
             if os.path.isfile(full_path):
                 file_list.append(full_path)
         return file_list
+
+    @staticmethod
+    def move_file_to_backup_folder(file_list):
+        if not os.path.isdir(const_define.BACKUP_FOLDER_PATH):
+            os.mkdir(const_define.BACKUP_FOLDER_PATH)
+
+        backup_mon_folder_name = os.path.join(const_define.BACKUP_FOLDER_PATH,
+                                              re.findall('.*月', os.path.basename(file_list[1]))[0])
+        if not os.path.isdir(backup_mon_folder_name):
+            os.mkdir(backup_mon_folder_name)
+
+        for file_path in file_list:
+            shutil.move(file_path, backup_mon_folder_name)
 
 
 salary_h = PerformanceCalculation()

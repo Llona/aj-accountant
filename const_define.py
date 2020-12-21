@@ -4,6 +4,8 @@ import os
 STATISTICAL_TABLE_KEYWORD = '統籌統計表'
 DATA_FOLDER_NAME = 'data'
 SALARY_DATA_FOLDER_NAME = os.path.join(os.path.join(os.getcwd(), DATA_FOLDER_NAME), 'salary')
+BACKUP_FOLDER_NAME = 'backup'
+BACKUP_FOLDER_PATH = os.path.join(SALARY_DATA_FOLDER_NAME, BACKUP_FOLDER_NAME)
 
 
 DETAILED_LEDGER_FILENAME = r'107年方殷營業支出.xlsx'
