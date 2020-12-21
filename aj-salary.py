@@ -60,7 +60,7 @@ class PerformanceCalculation(object):
             if name not in self.total_bonus_dic.keys():
                 continue
             print(name)
-            print('業積獎金: {}'.format(self.total_bonus_dic[name]))
+            print('業績獎金: {}'.format(self.total_bonus_dic[name]))
             print('======================')
 
         self.move_file_to_backup_folder(performance_files)
@@ -68,7 +68,6 @@ class PerformanceCalculation(object):
     def get_statistical_table_dic(self):
         statistical_table_filename = self.get_statistical_table_filename(self.get_all_perf_file_name())
 
-        print(statistical_table_filename)
         with open(statistical_table_filename, "rb") as f:
             in_mem_file = io.BytesIO(f.read())
         workbook = openpyxl.load_workbook(in_mem_file, read_only=True, data_only=True)
@@ -235,3 +234,5 @@ class PerformanceCalculation(object):
 
 salary_h = PerformanceCalculation()
 salary_h.calc_all_salary()
+print("")
+input('請Enter鍵離開...')
