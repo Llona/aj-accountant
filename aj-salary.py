@@ -17,7 +17,8 @@ class PerformanceCalculation(object):
         self.salary_folder_filename = const_define.SALARY_DATA_FOLDER_NAME
         self.sheet = None
         self.sheet_formula = None
-        self.sheet_statistical_table = None
+        self.sheet_statistical = None
+        self.sheet_statistical_formula = None
         self.name_mapping_dic = OrderedDict()
         self.personal_bonus_dic = {}
         self.overall_bonus_dic = {}
@@ -70,10 +71,17 @@ class PerformanceCalculation(object):
 
         with open(statistical_table_filename, "rb") as f:
             in_mem_file = io.BytesIO(f.read())
-        workbook = openpyxl.load_workbook(in_mem_file, read_only=True, data_only=True)
+        workbook = openpyxl.load_workbook(in_mem_file, read_only=True, data_only=False)
         worksheets = tuple(workbook.sheetnames)
-        self.sheet_statistical_table = workbook[worksheets[0]]
-        for row in self.sheet_statistical_table.iter_rows():
+        self.sheet_statistical_formula = workbook[worksheets[0]]
+
+        with open(statistical_table_filename, "rb") as f:
+            in_mem_file2 = io.BytesIO(f.read())
+        workbook_temp = openpyxl.load_workbook(in_mem_file2, read_only=True, data_only=True)
+        worksheets_temp = tuple(workbook_temp.sheetnames)
+        self.sheet_statistical = workbook_temp[worksheets_temp[0]]
+
+        for row in self.sheet_statistical_formula.iter_rows():
             for cell in row:
                 if cell.value == '各別獎金':
                     self.get_overall_value(cell)
@@ -82,14 +90,18 @@ class PerformanceCalculation(object):
     def get_overall_value(self, cell):
         # for name in self.name_mapping_dic.keys():
         for i in range(1, 99):
-            name = self.sheet_statistical_table.cell(row=cell.row-1, column=cell.column+i)
+            name = self.sheet_statistical_formula.cell(row=cell.row-1, column=cell.column+i)
             name = name.value
             if name:
-                for key, value in self.name_mapping_dic.items():
+                for key in self.name_mapping_dic.keys():
                     if key == name.lower():
-                        value = self.sheet_statistical_table.cell(row=cell.row+1, column=cell.column+i).value
-                        value = self.round_v2(value)
-                        self.overall_bonus_dic[key] = value
+                        cell_value = self.sheet_statistical_formula.cell(row=cell.row+1, column=cell.column+i).value
+                        # value = self.round_v2(value)
+                        cell_value = re.sub("=", "", cell_value)
+                        # print(self.sheet_statistical_formula[cell_value].value)
+                        overall_value = self.calculate_value_cell(self.sheet_statistical_formula[cell_value], self.sheet_statistical)
+                        # print(overall_value)
+                        self.overall_bonus_dic[key] = overall_value
             else:
                 return
 
@@ -103,7 +115,7 @@ class PerformanceCalculation(object):
         with open(full_filename, "rb") as f:
             in_mem_file2 = io.BytesIO(f.read())
         workbook_temp = openpyxl.load_workbook(in_mem_file2, read_only=True, data_only=False)
-        worksheets_temp = tuple(workbook.sheetnames)
+        worksheets_temp = tuple(workbook_temp.sheetnames)
         self.sheet_formula = workbook_temp[worksheets_temp[0]]
 
         person_col = column_index_from_string('I')
@@ -112,12 +124,13 @@ class PerformanceCalculation(object):
         for row in self.sheet_formula.iter_rows(min_col=person_col, max_col=person_col, min_row=300):
             for cell in row:
                 if cell.value == '個人Total' and cell.column == person_col:
-                    perf_value = self.calculate_value_cell(self.sheet_formula.cell(row=cell.row, column=cell.column+1))
+                    perf_value = self.calculate_value_cell(self.sheet_formula.cell
+                                                           (row=cell.row, column=cell.column+1), self.sheet)
                     # end = time.time()
                     # print("執行時間：%f 秒" % (end - start))
                     return perf_value
 
-    def calculate_value_cell(self, cell):
+    def calculate_value_cell(self, cell, sheet_h):
         formula = cell.value
         performance_value = 0
 
@@ -138,30 +151,27 @@ class PerformanceCalculation(object):
             if sum_min_col != sum_max_col:
                 print('not sum the same col, not support at this time!')
                 return
-            row_count = sum_min_row
+            # row_count = sum_min_row
             # print(sum_min_col, sum_min_row, sum_max_col, sum_max_row)
             # print(row_count)
-            while row_count <= sum_max_row:
-                value = self.sheet.cell(row=row_count, column=sum_min_col).value
 
-                if value:
-                    # print(value)
-                    # print(type(value))
-                    try:
-                        # int(value)
-                        # print(value)
-                        value = self.round_v2(value)
-                        # print(value)
-                        performance_value = performance_value + value
-                    except Exception as e:
-                        str(e)
-                row_count += 1
+            for row in sheet_h.iter_rows(min_col=sum_min_col, max_col=sum_max_col,
+                                           min_row=sum_min_row, max_row=sum_max_row):
+                for cell in row:
+                    value = cell.value
+                    if value:
+                        try:
+                            value = self.round_v2(value)
+                            performance_value = performance_value + value
+                            # print(value)
+                        except Exception as e:
+                            str(e)
             return performance_value
         elif formula.find("+") >= 0:
             formula = re.sub('=', '', formula)
             cell_list = formula.split('+')
             for cell_index in cell_list:
-                value = self.sheet[cell_index].value
+                value = sheet_h[cell_index].value
 
                 if value:
                     # print(value)
